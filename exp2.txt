@@ -1,0 +1,148 @@
+#include <bits/stdc++.h>
+
+using namespace std;
+
+typedef complex<double> cd;
+
+int main() {
+
+    int N = 3;
+
+    vector<vector<cd>> Y(3, vector<cd>(3, cd(0,0)));
+    vector<vector<cd>> y(3, vector<cd>(3, cd(0,0)));
+
+    Y[0][1] = cd(0,0.01);
+    Y[0][2] = cd(0,0.01);
+    Y[1][2] = cd(0,0.01);
+
+    y[0][1] = 1.0 / cd(0,0.1);
+    y[0][2] = 1.0 / cd(0,0.1);
+    y[1][2] = 1.0 / cd(0,0.1);
+
+    Y[1][0] = Y[0][1];
+    Y[2][0] = Y[0][2];
+    Y[2][1] = Y[1][2];
+
+    y[1][0] = y[0][1];
+    y[2][0] = y[0][2];
+    y[2][1] = y[1][2];
+
+    vector<vector<cd>> mat(3, vector<cd>(3, cd(0,0)));
+
+    for(int i=0;i<N;i++){
+        for(int j=0;j<N;j++){
+            if(i==j){
+                for(int k=0;k<N;k++){
+                    if(k!=i){
+                        mat[i][i] += Y[i][k] + y[i][k];
+                    }
+                }
+            } else {
+                mat[i][j] = -y[i][j];
+            }
+        }
+    }
+
+    cout << "Ybus matrix:\n";
+    for(int i=0;i<N;i++){
+        for(int j=0;j<N;j++){
+            cout << real(mat[i][j]) << " + j" << imag(mat[i][j]) << "\t";
+        }
+        cout << endl;
+    }
+
+    vector<string> bus = {"Slack","PV","PQ"};
+
+    vector<double> Psch = {0, 0.6661, -2.8653};
+    vector<double> Qsch = {0, 0, -1.2244};
+
+    vector<double> Vspec = {1.0, 1.05, 1.0};
+
+    vector<double> Qmin = {0, 0.2, 0};
+    vector<double> Qmax = {0, 2, 0};
+
+    vector<cd> V(N, cd(1,0));
+
+    V[0] = cd(Vspec[0],0);
+    V[1] = cd(Vspec[1],0);
+
+    double tol = 0.001;
+    int maxIter = 50;
+    double alpha = 1.6;
+
+    int idx = -1;
+
+    for(int iter=0; iter<maxIter; iter++){
+
+        vector<cd> Vprev = V;
+
+        for(int i=1;i<N;i++){
+
+            if(bus[i] == "PQ"){
+
+                cd sumYV = 0;
+
+                for(int j=0;j<i;j++)
+                    sumYV += mat[i][j]*V[j];
+
+                for(int j=i+1;j<N;j++)
+                    sumYV += mat[i][j]*Vprev[j];
+
+                cd Vnew = ((cd(Psch[i], -Qsch[i]) / conj(V[i])) - sumYV) / mat[i][i];
+
+                V[i] = V[i] + alpha*(Vnew - V[i]);
+
+            }
+            else if(bus[i] == "PV"){
+
+                cd sumYV = 0;
+
+                for(int j=0;j<i;j++)
+                    sumYV += mat[i][j]*V[j];
+
+                for(int j=0;j<N;j++)
+                    sumYV += mat[i][j]*Vprev[j];
+
+                double Qi = -imag(conj(V[i]) * sumYV);
+
+                if(Qi < Qmin[i]) Qi = Qmin[i];
+                if(Qi > Qmax[i]) Qi = Qmax[i];
+
+                cd sumYV1 = 0;
+
+                for(int j=0;j<i;j++)
+                    sumYV1 += mat[i][j]*V[j];
+
+                for(int j=i+1;j<N;j++)
+                    sumYV1 += mat[i][j]*Vprev[j];
+
+                cd Vnew = ((cd(Psch[i], -Qi) / conj(V[i])) - sumYV1) / mat[i][i];
+
+                V[i] = V[i] + alpha*(Vnew - V[i]);
+
+                V[i] = Vspec[i] * V[i] / abs(V[i]);
+            }
+        }
+
+        double maxDiff = 0;
+        for(int i=0;i<N;i++){
+            maxDiff = max(maxDiff, abs(V[i] - Vprev[i]));
+        }
+
+        if(maxDiff < tol){
+            idx = iter + 1;
+            break;
+        }
+    }
+
+    cout << "\nConverged in " << idx << " iterations\n";
+
+    cout << "Final Bus Voltages:\n";
+    for(int i=0;i<N;i++){
+        cout << "Bus " << i+1 << ": "
+             << abs(V[i]) << " ∠ "
+             << arg(V[i]) * 180/M_PI << " deg\n";
+    }
+
+    return 0;
+}
